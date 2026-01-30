@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue' // Added computed, watch
 import { useRouter } from 'vue-router'
 import { 
   ArrowUpIcon, 
@@ -10,8 +10,7 @@ import {
   EllipsisHorizontalIcon,
   CalendarIcon,
   ChevronDownIcon
-} from '@heroicons/vue/24/outline'
-import BaseCard from '@/components/ui/BaseCard.vue'
+} from '@heroicons/vue/24/outline' // Icons
 import api from '@/composables/useApi'
 import {
   Chart as ChartJS,
@@ -26,7 +25,6 @@ import {
 } from 'chart.js'
 import { Line } from 'vue-chartjs'
 
-
 ChartJS.register(
   CategoryScale,
   LinearScale,
@@ -38,100 +36,37 @@ ChartJS.register(
   Filler
 )
 
-const stats = ref([
-  { name: 'Total Sales', stat: '$0.00', change: '0%', changeType: 'neutral', icon: CurrencyDollarIcon },
-  { name: 'Total Orders', stat: '0', change: '0%', changeType: 'neutral', icon: ShoppingCartIcon },
-  { name: 'Avg. Order Value', stat: '$0.00', change: '0%', changeType: 'neutral', icon: CurrencyDollarIcon }, // Using dollar icon again or maybe something else
-])
-
+const router = useRouter()
+const allOrders = ref([])
+const stats = ref([])
 const recentOrders = ref([])
 const activities = ref([])
-const router = useRouter()
+const chartData = ref({ labels: [], datasets: [] })
 
-const chartData = ref({
-  labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-  datasets: []
+// Date Filtering
+const dateRange = ref('7') // Default 7 days
+const showDateMenu = ref(false)
+
+const setRange = (days) => {
+    dateRange.value = days
+    showDateMenu.value = false
+    calculateStats()
+}
+
+// Filter orders based on selected range
+const filteredOrders = computed(() => {
+    if (!allOrders.value.length) return []
+    
+    const cutoffDate = new Date()
+    cutoffDate.setDate(cutoffDate.getDate() - parseInt(dateRange.value))
+    
+    return allOrders.value.filter(order => new Date(order.created_at) >= cutoffDate)
 })
 
-// Shopify-like clean chart options
-const chartOptions = {
-  responsive: true,
-  maintainAspectRatio: false,
-  plugins: {
-    legend: { display: false },
-    tooltip: {
-      mode: 'index',
-      intersect: false,
-      backgroundColor: '#fff',
-      titleColor: '#1f2937',
-      bodyColor: '#1f2937',
-      borderColor: '#e5e7eb',
-      borderWidth: 1,
-      padding: 12,
-      cornerRadius: 8,
-      displayColors: false,
-      callbacks: {
-        label: function(context) {
-          let label = context.dataset.label || '';
-          if (label) {
-            label += ': ';
-          }
-          if (context.parsed.y !== null) {
-            label += new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(context.parsed.y);
-          }
-          return label;
-        }
-      }
-    }
-  },
-  scales: {
-    y: {
-      beginAtZero: true,
-      grid: { 
-        borderDash: [4, 4], 
-        color: '#f3f4f6', 
-        drawBorder: false 
-      },
-      ticks: { 
-        callback: (value) => '$' + value,
-        font: { size: 11 },
-        color: '#6b7280'
-      }
-    },
-    x: { 
-      grid: { display: false },
-      ticks: {
-        font: { size: 11 },
-        color: '#6b7280'
-      }
-    }
-  },
-  elements: {
-    line: {
-      tension: 0.4 // Smooth curves
-    }
-  }
-}
-
-const formatDate = (dateString) => {
-  return new Date(dateString).toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: 'numeric'
-  })
-}
-
-onMounted(async () => {
-  try {
-    const response = await api.get('/orders')
-    const orders = response.data.orders.data || []
+const calculateStats = () => {
+    const orders = filteredOrders.value
     
-    // Sort orders by date desc
-    orders.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
-
     // Analytics Calculation
-    // API returns 'total', not 'total_amount'
     const totalRevenue = orders.reduce((sum, order) => sum + parseFloat(order.total || 0), 0)
     const totalOrdersCount = orders.length
     const avgOrderValue = totalOrdersCount > 0 ? totalRevenue / totalOrdersCount : 0
@@ -141,31 +76,128 @@ onMounted(async () => {
       { 
         name: 'Total Sales', 
         stat: '$' + totalRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), 
-        change: '+12.5%', 
-        changeType: 'increase',
+        change: 'N/A', 
+        changeType: 'neutral',
         icon: CurrencyDollarIcon
       },
       { 
         name: 'Total Orders', 
         stat: totalOrdersCount.toString(), 
-        change: '+8.1%', 
-        changeType: 'increase',
+        change: 'N/A', 
+        changeType: 'neutral',
         icon: ShoppingCartIcon
       },
        { 
         name: 'Avg. Order Value', 
         stat: '$' + avgOrderValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), 
-        change: '+4.2%', 
-        changeType: 'increase',
+        change: 'N/A', 
+        changeType: 'neutral',
         icon: UsersIcon 
       },
     ]
 
-    // Set Recent Orders (Top 5)
-    recentOrders.value = orders.slice(0, 5)
+    // Chart Data (Group by date)
+    const daysMap = {}
+    const daysButtons = parseInt(dateRange.value)
+    
+    // Initialize map with 0 for last X days
+    for (let i = daysButtons - 1; i >= 0; i--) {
+        const d = new Date()
+        d.setDate(d.getDate() - i)
+        const dateStr = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+        daysMap[dateStr] = 0
+    }
+    
+    // Fill with boolean revenue
+    orders.forEach(order => {
+        const d = new Date(order.created_at)
+        const dateStr = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+        if (daysMap.hasOwnProperty(dateStr)) {
+            daysMap[dateStr] += parseFloat(order.total || 0)
+        }
+    })
 
-    // Build Activity Feed from Orders
-    activities.value = orders.slice(0, 10).map(order => ({
+    const labels = Object.keys(daysMap)
+    const data = Object.values(daysMap)
+
+    chartData.value = {
+      labels: labels,
+      datasets: [
+        {
+          label: 'Sales',
+          backgroundColor: (context) => {
+            const ctx = context.chart.ctx;
+            const gradient = ctx.createLinearGradient(0, 0, 0, 200);
+            gradient.addColorStop(0, 'rgba(16, 185, 129, 0.2)'); 
+            gradient.addColorStop(1, 'rgba(16, 185, 129, 0)');
+            return gradient;
+          },
+          borderColor: '#10b981',
+          pointBackgroundColor: '#ffffff',
+          pointBorderColor: '#10b981',
+          pointBorderWidth: 2,
+          borderWidth: 2,
+          pointRadius: 3,
+          fill: true,
+          data: data
+        }
+      ]
+    }
+}
+
+// Chart Options (Keep existing)
+const chartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+        legend: { display: false },
+        tooltip: {
+            mode: 'index',
+            intersect: false,
+            callbacks: {
+                label: function(context) {
+                    let label = context.dataset.label || '';
+                    if (label) label += ': ';
+                    if (context.parsed.y !== null) {
+                        label += new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(context.parsed.y);
+                    }
+                    return label;
+                }
+            }
+        }
+    },
+    scales: {
+        y: {
+            beginAtZero: true,
+            grid: { borderDash: [4, 4], color: '#f3f4f6', drawBorder: false },
+            ticks: { callback: (value) => '$' + value, font: { size: 10 }, color: '#6b7280' }
+        },
+        x: { grid: { display: false }, ticks: { font: { size: 10 }, color: '#6b7280' } }
+    },
+    elements: { line: { tension: 0.4 } }
+}
+
+const formatDate = (dateString) => {
+  return new Date(dateString).toLocaleDateString('en-US', {
+    month: 'short', day: 'numeric', hour: 'numeric', minute: 'numeric'
+  })
+}
+
+onMounted(async () => {
+  try {
+    // Fetch MORE orders to allow decent CLIENT-SIDE filtering
+    // In production, you'd use a real analytics endpoint
+    const response = await api.get('/orders?per_page=1000') 
+    allOrders.value = response.data.orders.data || []
+    
+    // Initial Calc
+    calculateStats()
+
+    // Recent Orders (Always show top 5 actual orders)
+    recentOrders.value = allOrders.value.slice(0, 5)
+
+    // Activity Feed
+    activities.value = allOrders.value.slice(0, 10).map(order => ({
       id: order.id,
       type: 'order',
       content: `Order #${order.order_number || order.id} placed by ${order.customer ? order.customer.name : 'Guest'}`,
@@ -174,41 +206,6 @@ onMounted(async () => {
       status: order.status
     }))
 
-    // Chart Data (Mocking daily distribution based on total)
-    // In a real app, we'd group orders by date
-    const dailyData = [0, 0, 0, 0, 0, 0, 0]
-    // Distribute total revenue somewhat randomly for visualization or 0 if empty
-    if (totalRevenue > 0) {
-        const base = totalRevenue / 7
-        dailyData.fill(base)
-        // Add some noise
-        dailyData.forEach((val, i) => dailyData[i] = val + (Math.random() * val * 0.5 - val * 0.25))
-    }
-
-    chartData.value = {
-      labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-      datasets: [
-        {
-          label: 'Sales',
-          backgroundColor: (context) => {
-            const ctx = context.chart.ctx;
-            const gradient = ctx.createLinearGradient(0, 0, 0, 200);
-            gradient.addColorStop(0, 'rgba(16, 185, 129, 0.2)'); // Emerald-500 low opacity
-            gradient.addColorStop(1, 'rgba(16, 185, 129, 0)');
-            return gradient;
-          },
-          borderColor: '#10b981', // Emerald-500
-          pointBackgroundColor: '#ffffff',
-          pointBorderColor: '#10b981',
-          pointBorderWidth: 2,
-          borderWidth: 2,
-          pointRadius: 4,
-          pointHoverRadius: 6,
-          fill: true,
-          data: dailyData 
-        }
-      ]
-    }
   } catch (error) {
     console.error('Failed to fetch dashboard data', error)
   }
@@ -220,12 +217,21 @@ onMounted(async () => {
     <!-- Header with Date Picker -->
     <div class="sm:flex sm:items-center sm:justify-between">
       <h1 class="text-2xl font-bold leading-7 text-gray-900 sm:truncate sm:tracking-tight">Dashboard</h1>
-      <div class="mt-4 flex sm:ml-4 sm:mt-0">
-        <button type="button" class="inline-flex items-center gap-x-1.5 rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50">
+      <div class="mt-4 flex sm:ml-4 sm:mt-0 relative">
+        <button @click="showDateMenu = !showDateMenu" type="button" class="inline-flex items-center gap-x-1.5 rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50">
           <CalendarIcon class="-ml-0.5 h-5 w-5 text-gray-400" aria-hidden="true" />
-          Last 7 Days
+          Last {{ dateRange }} Days
           <ChevronDownIcon class="-mr-1 h-5 w-5 text-gray-400" aria-hidden="true" />
         </button>
+        
+        <!-- Dropdown menu -->
+        <div v-if="showDateMenu" class="absolute right-0 top-full mt-2 w-40 rounded-md bg-white shadow-lg ring-1 ring-black ring-opacity-5 z-10 focus:outline-none">
+            <div class="py-1">
+                <a href="#" @click.prevent="setRange('7')" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Last 7 Days</a>
+                <a href="#" @click.prevent="setRange('15')" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Last 15 Days</a>
+                <a href="#" @click.prevent="setRange('30')" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Last 30 Days</a>
+            </div>
+        </div>
       </div>
     </div>
 
@@ -244,11 +250,6 @@ onMounted(async () => {
             </dt>
             <dd class="ml-16 flex items-baseline pb-1 sm:pb-2">
               <p class="text-2xl font-semibold text-gray-900">{{ item.stat }}</p>
-              <p :class="[item.changeType === 'increase' ? 'text-green-600' : 'text-red-600', 'ml-2 flex items-baseline text-sm font-semibold']">
-                <component :is="item.changeType === 'increase' ? ArrowUpIcon : ArrowDownIcon" class="h-4 w-4 flex-shrink-0 self-center" aria-hidden="true" />
-                <span class="sr-only"> {{ item.changeType === 'increase' ? 'Increased' : 'Decreased' }} by </span>
-                {{ item.change }}
-              </p>
             </dd>
           </div>
         </dl>
@@ -259,23 +260,18 @@ onMounted(async () => {
             <div class="flex items-center justify-between">
               <div>
                 <h3 class="text-base font-semibold leading-6 text-gray-900">Total Sales</h3>
-                <p class="text-sm text-gray-500">Sales over time</p>
-              </div>
-              <div class="flex items-center space-x-2">
-                 <button type="button" class="rounded p-1 hover:bg-gray-100">
-                    <EllipsisHorizontalIcon class="h-5 w-5 text-gray-500" />
-                 </button>
+                <p class="text-sm text-gray-500">Sales over last {{ dateRange }} days</p>
               </div>
             </div>
             <div class="mt-6 h-80">
-               <Line :data="chartData" :options="chartOptions" />
+               <Line v-if="chartData.datasets.length" :data="chartData" :options="chartOptions" />
             </div>
           </div>
         </div>
 
       </div>
 
-      <!-- Right Column: Activity Feed -->
+      <!-- Right Column: Activity Feed ONLY -->
       <div class="lg:col-span-1 space-y-6">
         
         <!-- Recent Activity Card -->
@@ -314,42 +310,8 @@ onMounted(async () => {
             </div>
           </div>
         </div>
-
-        <!-- Things to do Card (Mock) -->
-        <div class="overflow-hidden rounded-lg bg-white shadow">
-            <div class="p-6">
-                <h3 class="text-base font-semibold leading-6 text-gray-900">Things to do</h3>
-                <ul class="mt-4 space-y-4">
-                    <li class="flex items-start gap-3">
-                        <div class="flex h-6 items-center">
-                            <input id="comments" name="comments" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600" disabled checked />
-                        </div>
-                        <div class="text-sm leading-6">
-                            <label for="comments" class="font-medium text-gray-900 line-through text-gray-500">Add your first product</label>
-                            <p class="text-gray-500">You've successfully added products to your store.</p>
-                        </div>
-                    </li>
-                    <li class="flex items-start gap-3">
-                        <div class="flex h-6 items-center">
-                            <input id="candidates" name="candidates" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600" />
-                        </div>
-                        <div class="text-sm leading-6">
-                            <label for="candidates" class="font-medium text-gray-900">Customize your theme</label>
-                            <p class="text-gray-500">Make your store look perfect for your brand.</p>
-                        </div>
-                    </li>
-                     <li class="flex items-start gap-3">
-                        <div class="flex h-6 items-center">
-                            <input id="domain" name="domain" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600" />
-                        </div>
-                        <div class="text-sm leading-6">
-                            <label for="domain" class="font-medium text-gray-900">Add a custom domain</label>
-                            <p class="text-gray-500">Strengthen your brand with a custom domain.</p>
-                        </div>
-                    </li>
-                </ul>
-            </div>
-        </div>
+        
+        <!-- Removed 'Things to do' Section -->
 
       </div>
     </div>
