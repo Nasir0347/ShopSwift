@@ -131,7 +131,8 @@ onMounted(async () => {
     orders.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
 
     // Analytics Calculation
-    const totalRevenue = orders.reduce((sum, order) => sum + parseFloat(order.total_amount), 0)
+    // API returns 'total', not 'total_amount'
+    const totalRevenue = orders.reduce((sum, order) => sum + parseFloat(order.total || 0), 0)
     const totalOrdersCount = orders.length
     const avgOrderValue = totalOrdersCount > 0 ? totalRevenue / totalOrdersCount : 0
 
@@ -167,8 +168,8 @@ onMounted(async () => {
     activities.value = orders.slice(0, 10).map(order => ({
       id: order.id,
       type: 'order',
-      content: `Order #${order.id} placed by ${order.user ? order.user.name : 'Guest'}`,
-      amount: '$' + parseFloat(order.total_amount).toFixed(2),
+      content: `Order #${order.order_number || order.id} placed by ${order.customer ? order.customer.name : 'Guest'}`,
+      amount: '$' + parseFloat(order.total || 0).toFixed(2),
       date: order.created_at,
       status: order.status
     }))
