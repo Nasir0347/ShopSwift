@@ -2,37 +2,58 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 
 export const useCartStore = defineStore('cart', () => {
-    const items = ref([])
+    const items = ref(JSON.parse(localStorage.getItem('cart_items')) || [])
     const isOpen = ref(false)
 
-    const totalItems = computed(() => items.value.reduce((total, item) => total + item.quantity, 0))
-    const subtotal = computed(() => items.value.reduce((total, item) => total + (item.price * item.quantity), 0))
+    const totalItems = computed(() => items.value.reduce((sum, item) => sum + item.quantity, 0))
+    const subtotal = computed(() => items.value.reduce((sum, item) => sum + (item.price * item.quantity), 0))
 
-    function addItem(product) {
-        const existingItem = items.value.find(item => item.id === product.id)
+    function addItem(product, variant = null, quantity = 1) {
+        const existingItem = items.value.find(item =>
+            item.product_id === product.id &&
+            item.variant_id === (variant?.id || null)
+        )
+
         if (existingItem) {
-            existingItem.quantity++
+            existingItem.quantity += quantity
         } else {
-            items.value.push({ ...product, quantity: 1 })
+            items.value.push({
+                product_id: product.id,
+                variant_id: variant?.id || null,
+                title: product.title,
+                variant_title: variant?.title || null,
+                price: parseFloat(variant?.price || product.price || 0), // Use variant price if available
+                image: product.image || (product.images && product.images[0]?.image_path) || null,
+                quantity: quantity,
+                slug: product.slug
+            })
         }
-        isOpen.value = true
+        saveCart()
+        isOpen.value = true // Open drawer on add
     }
 
-    function removeItem(productId) {
-        const index = items.value.findIndex(item => item.id === productId)
-        if (index > -1) {
-            items.value.splice(index, 1)
-        }
+    function removeItem(index) {
+        items.value.splice(index, 1)
+        saveCart()
     }
 
-    function updateQuantity(productId, quantity) {
-        const item = items.value.find(item => item.id === productId)
-        if (item) {
-            item.quantity = quantity
-            if (item.quantity <= 0) {
-                removeItem(productId)
-            }
-        }
+    function updateQuantity(index, quantity) {
+        if (quantity < 1) return removeItem(index)
+        items.value[index].quantity = quantity
+        saveCart()
+    }
+
+    function clearCart() {
+        items.value = []
+        saveCart()
+    }
+
+    function saveCart() {
+        localStorage.setItem('cart_items', JSON.stringify(items.value))
+    }
+
+    function toggleCart() {
+        isOpen.value = !isOpen.value
     }
 
     return {
@@ -42,6 +63,8 @@ export const useCartStore = defineStore('cart', () => {
         subtotal,
         addItem,
         removeItem,
-        updateQuantity
+        updateQuantity,
+        clearCart,
+        toggleCart
     }
 })

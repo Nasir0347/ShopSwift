@@ -16,6 +16,9 @@ class OrderItemResource extends JsonResource
             'quantity'     => $this->quantity,
             'price'        => $this->price,
             'total'        => $this->total,
+            'image'        => $this->variant?->product?->primary_image?->image_path,
+            'product_id'   => $this->variant?->product_id,
+            'variant_id'   => $this->product_variant_id,
         ];
     }
 }

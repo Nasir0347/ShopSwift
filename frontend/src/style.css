@@ -4,6 +4,6 @@
 
 @layer base {
   body {
-    @apply bg-gray-50 text-slate-900 font-sans antialiased;
+    @apply bg-surface-subdued text-content font-sans antialiased;
   }
 }

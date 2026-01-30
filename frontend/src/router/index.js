@@ -4,20 +4,20 @@ const routes = [
     {
         path: '/',
         name: 'Home',
-        component: () => import('@/views/storefront/Home.vue'),
-        meta: { layout: 'StoreLayout' }
+        component: () => import('@/views/shop/HomeView.vue'),
+        meta: { layout: 'ShopLayout' }
     },
     {
-        path: '/products',
-        name: 'StoreProducts',
-        component: () => import('@/views/storefront/Products.vue'),
-        meta: { layout: 'StoreLayout' }
+        path: '/catalog',
+        name: 'Catalog',
+        component: () => import('@/views/shop/ProductListView.vue'),
+        meta: { layout: 'ShopLayout' }
     },
     {
-        path: '/products/:slug',
+        path: '/products/:id',
         name: 'ProductDetail',
-        component: () => import('@/views/storefront/ProductDetail.vue'),
-        meta: { layout: 'StoreLayout' }
+        component: () => import('@/views/shop/ProductDetailView.vue'),
+        meta: { layout: 'ShopLayout' }
     },
     {
         path: '/about',
@@ -56,6 +56,12 @@ const routes = [
         meta: { layout: 'AdminLayout' }
     },
     {
+        path: '/admin/orders/:id',
+        name: 'AdminOrderDetails',
+        component: () => import('@/views/admin/OrderDetails.vue'),
+        meta: { layout: 'AdminLayout' }
+    },
+    {
         path: '/login',
         name: 'Login',
         component: () => import('@/views/auth/Login.vue'),
@@ -65,7 +71,13 @@ const routes = [
         path: '/checkout',
         name: 'Checkout',
         component: () => import('@/views/storefront/Checkout.vue'),
-        meta: { layout: 'StoreLayout' }
+        meta: { layout: 'ShopLayout' }
+    },
+    {
+        path: '/order-confirmation/:id',
+        name: 'OrderConfirmation',
+        component: () => import('@/views/storefront/OrderConfirmation.vue'),
+        meta: { layout: 'ShopLayout' }
     }
 ]
 

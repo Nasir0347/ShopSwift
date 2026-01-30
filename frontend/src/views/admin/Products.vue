@@ -7,13 +7,20 @@ import {
   ArrowDownTrayIcon, 
   ArrowUpTrayIcon,
   EyeIcon,
-  PhotoIcon
+  PhotoIcon,
+  TrashIcon
 } from '@heroicons/vue/24/outline'
 import BaseButton from '@/components/ui/BaseButton.vue'
+import Badge from '@/components/ui/Badge.vue'
+import SkeletonLoader from '@/components/SkeletonLoader.vue'
+import Pagination from '@/components/Pagination.vue'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import api from '@/composables/useApi' 
 import { useRouter } from 'vue-router'
+import { useToastStore } from '@/stores/toast'
 
 const router = useRouter()
+const toast = useToastStore()
 const products = ref([])
 const selectedProducts = ref([])
 const searchQuery = ref('')
@@ -24,6 +31,17 @@ const sortOrder = ref('desc') // desc or asc
 const sortBy = ref('created_at') // created_at or title
 const filterVendor = ref('')
 const filterCategory = ref('')
+const loading = ref(true)
+
+// Pagination state
+const currentPage = ref(1)
+const totalPages = ref(1)
+const total = ref(0)
+const perPage = ref(20)
+
+// Delete confirmation
+const showDeleteDialog = ref(false)
+const productToDelete = ref(null)
 
 // File Input Ref
 const fileInput = ref(null)
@@ -32,25 +50,41 @@ onMounted(async () => {
     await fetchProducts()
 })
 
-const fetchProducts = async () => {
+const fetchProducts = async (page = 1) => {
+    loading.value = true
     try {
-        const response = await api.get('/products')
-        const productData = response.data.data.data || []
+        const response = await api.get('/products', {
+            params: { page, per_page: perPage.value }
+        })
+        const productData = response.data.products.data || []
+        
+        // Update pagination metadata
+        currentPage.value = response.data.products.current_page || 1
+        totalPages.value = response.data.products.last_page || 1
+        total.value = response.data.products.total || 0
+        
         // Map backend data to frontend model
         products.value = productData.map(p => ({
             id: p.id,
             title: p.title,
-            slug: p.slug, // Added Slug
+            slug: p.slug,
             status: p.status, 
-            inventory: p.variants?.reduce((acc, v) => acc + (v.inventory_quantity || (v.inventory?.quantity || 0)), 0) || 0, // Robust inventory sum
-            variantsCount: p.variants?.length || 0, // Added variants count
+            inventory: p.variants?.reduce((acc, v) => acc + (v.inventory_quantity || (v.inventory?.quantity || 0)), 0) || 0,
+            variantsCount: p.variants?.length || 0,
             vendor: p.vendor || 'ShopSwift',
             category: p.category?.name || 'Uncategorized',
             image: p.images?.[0]?.image_path || null
         }))
     } catch (e) {
         console.error('Failed to fetch products', e)
+        toast.error('Failed to load products')
+    } finally {
+        loading.value = false
     }
+}
+
+const handlePageChange = (page) => {
+    fetchProducts(page)
 }
 
 const handleExport = async () => {
@@ -63,9 +97,10 @@ const handleExport = async () => {
         document.body.appendChild(link)
         link.click()
         link.remove()
+        toast.success('Products exported successfully')
     } catch (e) {
         console.error('Export failed', e)
-        alert('Export failed')
+        toast.error('Failed to export products')
     }
 }
 
@@ -84,11 +119,11 @@ const handleImportClient = async (event) => {
         await api.post('/products/import', formData, {
             headers: { 'Content-Type': 'multipart/form-data' }
         })
-        alert('Import successful')
+        toast.success('Products imported successfully')
         await fetchProducts() // Refresh list
     } catch (e) {
         console.error('Import failed', e)
-        alert('Import failed: ' + (e.response?.data?.message || e.message))
+        toast.error('Import failed: ' + (e.response?.data?.message || e.message))
     } finally {
         event.target.value = '' // Reset input
     }
@@ -169,6 +204,34 @@ const toggleAll = () => {
   } else {
     selectedProducts.value = filteredProducts.value.map(p => p.id)
   }
+}
+
+const confirmDelete = (product) => {
+  productToDelete.value = product
+  showDeleteDialog.value = true
+}
+
+const handleDelete = async () => {
+  if (!productToDelete.value) return
+  
+  try {
+    await api.delete(`/products/${productToDelete.value.id}`)
+    toast.success('Product deleted successfully')
+    
+    // Refresh products list
+    await fetchProducts(currentPage.value)
+  } catch (e) {
+    console.error('Delete failed', e)
+    toast.error('Failed to delete product: ' + (e.response?.data?.message || e.message))
+  } finally {
+    showDeleteDialog.value = false
+    productToDelete.value = null
+  }
+}
+
+const cancelDelete = () => {
+  showDeleteDialog.value = false
+  productToDelete.value = null
 }
 
 const bulkUpdateStatus = async (status) => {
@@ -308,7 +371,23 @@ const bulkUpdateStatus = async (status) => {
             </tr>
           </thead>
           <tbody class="divide-y divide-gray-200 bg-white">
-            <tr v-for="product in filteredProducts" :key="product.id" class="hover:bg-gray-50 transition-colors group">
+            <!-- Loading State -->
+            <tr v-if="loading">
+              <td colspan="7" class="py-8">
+                <SkeletonLoader type="table-row" :count="5" />
+              </td>
+            </tr>
+            
+            <!-- Empty State -->
+            <tr v-else-if="filteredProducts.length === 0">
+              <td colspan="7" class="py-12 text-center text-sm text-gray-500">
+                <p class="font-medium">No products found</p>
+                <p class="mt-1">Try adjusting your filters or search query</p>
+              </td>
+            </tr>
+            
+            <!-- Products List -->
+            <tr v-else v-for="product in filteredProducts" :key="product.id" class="hover:bg-gray-50 transition-colors group">
               <td class="whitespace-nowrap py-4 pl-4 pr-3 sm:pl-6">
                 <input type="checkbox" class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600" 
                        :checked="selectedProducts.includes(product.id)"
@@ -326,13 +405,9 @@ const bulkUpdateStatus = async (status) => {
                   {{ product.title }}
               </td>
               <td class="whitespace-nowrap px-3 py-4 text-sm">
-                <span :class="[
-                    product.status === 'active' ? 'bg-green-100 text-green-800' : 
-                    product.status === 'draft' ? 'bg-gray-100 text-gray-800' : 'bg-yellow-100 text-yellow-800',
-                    'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset ring-black/5 capitalize'
-                ]">
+                <Badge :variant="product.status === 'active' ? 'success' : (product.status === 'draft' ? 'neutral' : 'warning')">
                     {{ product.status }}
-                </span>
+                </Badge>
               </td>
               <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-600">
                   <span :class="{'text-red-600 font-medium': product.inventory <= 0}">
@@ -345,31 +420,54 @@ const bulkUpdateStatus = async (status) => {
               <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500">{{ product.category }}</td>
               <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500">{{ product.vendor }}</td>
               <td class="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
-                 <!-- Preview / Eye Icon -->
-                 <a 
-                    v-if="product.status === 'active'"
-                    :href="`/products/${product.slug}`" 
-                    target="_blank"
-                    class="text-gray-400 hover:text-indigo-600 transition-colors inline-block" 
-                    title="View on Online Store"
-                 >
-                    <EyeIcon class="h-5 w-5" />
-                 </a>
+                 <div class="flex items-center justify-end gap-3">
+                   <!-- Preview / Eye Icon -->
+                   <a 
+                      v-if="product.status === 'active'"
+                      :href="`/products/${product.slug}`" 
+                      target="_blank"
+                      class="text-gray-400 hover:text-indigo-600 transition-colors inline-block" 
+                      title="View on Online Store"
+                   >
+                      <EyeIcon class="h-5 w-5" />
+                   </a>
+                   
+                   <!-- Delete Icon -->
+                   <button
+                      @click="confirmDelete(product)"
+                      class="text-gray-400 hover:text-red-600 transition-colors"
+                      title="Delete product"
+                   >
+                      <TrashIcon class="h-5 w-5" />
+                   </button>
+                 </div>
               </td>
             </tr>
           </tbody>
         </table>
       </div>
       
-        <!-- Footer / Pagination -->
-        <div class="flex items-center justify-between border-t border-gray-200 bg-white px-4 py-3 sm:px-6 rounded-b-lg">
-            <div class="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
-                <div>
-                <p class="text-sm text-gray-700">Showing <span class="font-medium">1</span> to <span class="font-medium">{{ filteredProducts.length }}</span> of <span class="font-medium">{{ products.length }}</span> results</p>
-                </div>
-            </div>
-        </div>
+      <!-- Pagination Component -->
+      <Pagination
+        :current-page="currentPage"
+        :total-pages="totalPages"
+        :total="total"
+        :per-page="perPage"
+        @page-changed="handlePageChange"
+      />
 
     </div>
+    
+    <!-- Delete Confirmation Dialog -->
+    <ConfirmDialog
+      :is-open="showDeleteDialog"
+      title="Delete Product"
+      :message="`Are you sure you want to delete '${productToDelete?.title}'? This action cannot be undone.`"
+      confirm-text="Delete"
+      cancel-text="Cancel"
+      variant="danger"
+      @confirm="handleDelete"
+      @cancel="cancelDelete"
+    />
   </div>
 </template>

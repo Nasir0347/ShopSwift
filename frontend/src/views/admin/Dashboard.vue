@@ -1,5 +1,6 @@
 <script setup>
 import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { 
   ArrowUpIcon, 
   ArrowDownIcon, 
@@ -45,6 +46,7 @@ const stats = ref([
 
 const recentOrders = ref([])
 const activities = ref([])
+const router = useRouter()
 
 const chartData = ref({
   labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
@@ -123,7 +125,7 @@ const formatDate = (dateString) => {
 onMounted(async () => {
   try {
     const response = await api.get('/orders')
-    const orders = response.data.data.data || []
+    const orders = response.data.orders.data || []
     
     // Sort orders by date desc
     orders.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
@@ -281,7 +283,7 @@ onMounted(async () => {
             <h3 class="text-base font-semibold leading-6 text-gray-900">Recent Activity</h3>
             <div class="mt-6 flow-root">
               <ul role="list" class="-my-5 divide-y divide-gray-200">
-                <li v-for="activity in activities" :key="activity.id" class="py-4">
+                <li v-for="activity in activities" :key="activity.id" class="py-4 cursor-pointer hover:bg-gray-50 transition p-2 rounded-md" @click="router.push(`/admin/orders/${activity.id}`)">
                   <div class="flex items-center space-x-4">
                     <div class="flex-shrink-0">
                        <span class="inline-flex h-8 w-8 items-center justify-center rounded-full bg-green-100">

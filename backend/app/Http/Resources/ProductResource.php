@@ -16,8 +16,10 @@ class ProductResource extends JsonResource
             'description' => $this->description,
             'status'      => $this->status,
             'vendor'      => $this->vendor,
+            'options'     => $this->options,
+            'tags'        => $this->tags,
             'category'    => new CategoryResource($this->whenLoaded('category')),
-            'variants'    => $this->whenLoaded('variants'),
+            'variants'    => VariantResource::collection($this->whenLoaded('variants')),
             'images'      => $this->whenLoaded('images'),
             'created_at'  => $this->created_at->toIso8601String(),
         ];

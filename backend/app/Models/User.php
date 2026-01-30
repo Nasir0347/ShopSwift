@@ -48,8 +48,36 @@ class User extends Authenticatable
         ];
     }
 
+
     public function addresses()
     {
         return $this->hasMany(CustomerAddress::class);
+    }
+    
+    public function orders()
+    {
+        return $this->hasMany(Order::class);
+    }
+    
+    // Helper methods
+    public function isAdmin()
+    {
+        return in_array($this->role, ['super_admin', 'store_admin']);
+    }
+    
+    public function isCustomer()
+    {
+        return $this->role === 'customer';
+    }
+    
+    // Scopes
+    public function scopeAdmins($query)
+    {
+        return $query->whereIn('role', ['super_admin', 'store_admin']);
+    }
+    
+    public function scopeCustomers($query)
+    {
+        return $query->where('role', 'customer');
     }
 }

@@ -15,14 +15,17 @@ trait ApiResponse
      * @param array $meta
      * @return JsonResponse
      */
-    protected function success(mixed $data = [], string $message = 'Action completed', int $statusCode = 200, array $meta = []): JsonResponse
+    protected function success(mixed $data = [], string $message = 'Action completed', int $statusCode = 200, array $meta = [], ?string $key = null): JsonResponse
     {
-        return response()->json([
+        $response = [
             'success' => true,
             'message' => $message,
-            'data'    => $data,
             'meta'    => $meta,
-        ], $statusCode);
+        ];
+
+        $response[$key ?: 'data'] = $data;
+
+        return response()->json($response, $statusCode);
     }
 
     /**

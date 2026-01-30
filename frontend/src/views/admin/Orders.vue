@@ -1,7 +1,9 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import BaseCard from '@/components/ui/BaseCard.vue'
 import BaseButton from '@/components/ui/BaseButton.vue'
+import Badge from '@/components/ui/Badge.vue'
 import api from '@/composables/useApi'
 import { MagnifyingGlassIcon, FunnelIcon, ArrowsUpDownIcon } from '@heroicons/vue/24/outline'
 
@@ -9,13 +11,14 @@ const orders = ref([])
 const activeTab = ref('All')
 const searchQuery = ref('')
 const selectedOrders = ref([])
+const router = useRouter()
 
 const tabs = ['All', 'Unfulfilled', 'Unpaid', 'Open', 'Closed']
 
 const fetchOrders = async () => {
   try {
     const response = await api.get('/orders')
-    orders.value = response.data.data.data || []
+    orders.value = response.data.orders.data || []
   } catch (error) {
     console.error('Failed to fetch orders', error)
   }
@@ -157,24 +160,25 @@ onMounted(fetchOrders)
             </tr>
           </thead>
           <tbody class="divide-y divide-gray-200 bg-white">
-            <tr v-for="order in filteredOrders" :key="order.id" class="hover:bg-gray-50 transition-colors">
+            <tr v-for="order in filteredOrders" :key="order.id" @click="router.push(`/admin/orders/${order.id}`)" class="hover:bg-gray-50 transition-colors cursor-pointer">
               <td class="whitespace-nowrap py-4 pl-4 pr-3 sm:pl-6">
-                <input type="checkbox" class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600" :checked="selectedOrders.includes(order.id)" @change="toggleSelection(order.id)" />
+                <input type="checkbox" class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600" :checked="selectedOrders.includes(order.id)" @change="toggleSelection(order.id)" @click.stop />
               </td>
-              <td class="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-bold text-gray-900 sm:pl-0 cursor-pointer">#{{ order.id }}</td>
+              <td class="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-bold text-gray-900 sm:pl-0 cursor-pointer">
+                {{ order.order_number || ('#' + order.id) }}
+              </td>
               <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500">{{ new Date(order.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: 'numeric' }) }}</td>
               <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-900">{{ order.customer?.name || 'Guest' }}</td>
-              <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500">${{ order.total_amount }}</td>
+              <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500">${{ order.total }}</td>
               <td class="whitespace-nowrap px-3 py-4 text-sm">
-                <span :class="['inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ring-1 ring-inset ring-black/5 capitalize', getPaymentStatusColor(order.payment_status)]">
-                    <span class="w-1.5 h-1.5 mr-1.5 rounded-full bg-current opacity-60"></span>
+                <Badge :variant="order.payment_status === 'paid' ? 'success' : (order.payment_status === 'pending' ? 'warning' : 'critical')">
                     {{ order.payment_status }}
-                </span>
+                </Badge>
               </td>
               <td class="whitespace-nowrap px-3 py-4 text-sm">
-                 <span :class="['inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ring-1 ring-inset ring-black/5 capitalize', getFulfillmentStatusColor(order.status)]">
+                 <Badge :variant="order.status === 'completed' ? 'success' : 'warning'">
                     {{ order.status === 'completed' ? 'Fulfilled' : 'Unfulfilled' }}
-                </span>
+                </Badge>
               </td>
               <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500 text-right">{{ order.items?.length || 0 }} items</td>
             </tr>

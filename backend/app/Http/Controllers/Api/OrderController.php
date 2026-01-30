@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Order;
 use App\Http\Resources\OrderResource;
+use App\Http\Requests\StoreOrderRequest;
 use App\Services\OrderService;
 use App\Traits\ApiResponse;
 use Illuminate\Http\Request;
@@ -22,6 +23,7 @@ class OrderController extends Controller
 
     public function index(Request $request)
     {
+        $this->authorize('viewAny', Order::class);
         $query = Order::with(['items', 'user']);
         
         // If user is NOT admin/super_admin, filter by own ID
@@ -29,37 +31,28 @@ class OrderController extends Controller
             $query->where('user_id', $request->user()->id);
         }
 
-        return $this->success(OrderResource::collection($query->paginate(20))->response()->getData(true));
+        return $this->success(OrderResource::collection($query->orderByDesc('created_at')->paginate(20))->response()->getData(true), 'Orders retrieved', 200, [], 'orders');
     }
 
-    public function store(Request $request)
+    public function store(StoreOrderRequest $request)
     {
-        $validated = $request->validate([
-            'items' => 'required|array|min:1',
-            'items.*.variant_id' => 'required|exists:product_variants,id',
-            'items.*.quantity' => 'required|integer|min:1',
-            'discount_code' => 'nullable|string|exists:discounts,code',
-            'payment_method' => 'required|in:cod,stripe',
-        ]);
-
+        $this->authorize('create', Order::class);
         try {
-            $order = $this->orderService->createOrder($validated, $request->user());
-            return $this->success(new OrderResource($order->load('items')), 'Order placed successfully', 201);
+            $order = $this->orderService->createOrder($request->validated(), $request->user());
+            return $this->success(new OrderResource($order->load('items')), 'Order placed successfully', 201, [], 'order');
         } catch (\Exception $e) {
-            return $this->error($e->getMessage(), 400);
+            return $this->error($e->getMessage(), 400); // Bad Request for logical errors
         }
     }
 
     public function show(Request $request, $id)
     {
-        $order = Order::with(['items', 'payments'])->find($id);
+        $order = Order::with(['items.variant.product.images', 'payments', 'shippingAddress', 'user'])->find($id);
 
         if (!$order) return $this->error('Order not found', 404);
+        
+        $this->authorize('view', $order);
 
-        if ($request->user()->role === 'customer' && $order->user_id !== $request->user()->id) {
-            return $this->error('Unauthorized', 403);
-        }
-
-        return $this->success(new OrderResource($order));
+        return $this->success(new OrderResource($order), 'Order details', 200, [], 'order');
     }
 }
